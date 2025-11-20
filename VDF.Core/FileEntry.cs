@@ -16,6 +16,7 @@
 
 using ProtoBuf;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using VDF.Core.Utils;
@@ -30,13 +31,26 @@ namespace VDF.Core {
 #pragma warning restore CS8618 // Non-nullable field is uninitialized.
 		public FileEntry(string file) : this(new FileInfo(file)) { }
 		public FileEntry(FileInfo fileInfo) {
-			_Path = fileInfo.FullName;
-			Folder = fileInfo.Directory?.FullName ?? string.Empty;
-			var extension = fileInfo.Extension;
-			IsImage = FileUtils.ImageExtensions.Any(x => extension.EndsWith(x, StringComparison.OrdinalIgnoreCase));
-			DateCreated = fileInfo.CreationTimeUtc;
-			DateModified = fileInfo.LastWriteTimeUtc;
-			FileSize = fileInfo.Length;
+			try {
+				// For network paths, check accessibility first to avoid long timeouts
+				if (CoreUtils.IsNetworkPath(fileInfo.FullName)) {
+					if (!CoreUtils.IsNetworkPathAccessible(fileInfo.FullName, 10000)) {
+						throw new IOException($"Network path not accessible: {fileInfo.FullName}");
+					}
+				}
+
+				_Path = fileInfo.FullName;
+				Folder = fileInfo.Directory?.FullName ?? string.Empty;
+				var extension = fileInfo.Extension;
+				IsImage = FileUtils.ImageExtensions.Any(x => extension.EndsWith(x, StringComparison.OrdinalIgnoreCase));
+				DateCreated = fileInfo.CreationTimeUtc;
+				DateModified = fileInfo.LastWriteTimeUtc;
+				FileSize = fileInfo.Length;
+			}
+			catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is DirectoryNotFoundException) {
+				// Re-throw with more context for network errors
+				throw new IOException($"Failed to access file '{fileInfo.FullName}': {ex.Message}. This may be due to network connectivity issues.", ex);
+			}
 		}
 
 		[ProtoMember(1)]

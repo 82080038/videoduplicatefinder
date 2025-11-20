@@ -28,6 +28,7 @@ namespace VDF.Core.FFTools {
 	internal static class FfmpegEngine {
 		public static readonly string FFmpegPath;
 		const int TimeoutDuration = 15_000; //15 seconds
+		const int NetworkTimeoutDuration = 60_000; //60 seconds for network drives
 		public static FFHardwareAccelerationMode HardwareAccelerationMode;
 		public static string CustomFFArguments = string.Empty;
 		public static bool UseNativeBinding;
@@ -35,6 +36,15 @@ namespace VDF.Core.FFTools {
 
 
 		public static unsafe byte[]? GetThumbnail(FfmpegSettings settings, bool extendedLogging) {
+			// Check if file is on network drive and adjust timeout accordingly
+			bool isNetworkPath = CoreUtils.IsNetworkPath(settings.File);
+			int timeout = isNetworkPath ? NetworkTimeoutDuration : TimeoutDuration;
+			
+			// Pre-check network accessibility before attempting to process
+			if (isNetworkPath && !CoreUtils.IsNetworkPathAccessible(settings.File, 10000)) {
+				Logger.Instance.Info($"Network path not accessible for FFmpeg: {settings.File}");
+				return null;
+			}
 
 			const int N = 32;
 			const int ExpectedBytes = N * N;
@@ -207,8 +217,8 @@ namespace VDF.Core.FFTools {
 				using var ms = new MemoryStream();
 				process.StandardOutput.BaseStream.CopyTo(ms);
 
-				if (!process.WaitForExit(TimeoutDuration)) {
-					throw new TimeoutException($"FFmpeg timed out on file: {settings.File}");
+				if (!process.WaitForExit(timeout)) {
+					throw new TimeoutException($"FFmpeg timed out on file: {settings.File} (timeout: {timeout}ms, network: {isNetworkPath})");
 				}
 				else if (extendedLogging)
 					process.WaitForExit(); // Because of asynchronous event handlers, see: https://github.com/dotnet/runtime/issues/18789
@@ -226,6 +236,9 @@ namespace VDF.Core.FFTools {
 			}
 			catch (Exception e) {
 				errOut += $"{Environment.NewLine}{e.Message}";
+				if (isNetworkPath && e is TimeoutException) {
+					errOut += $"{Environment.NewLine}Network drive may be slow or disconnected. Consider increasing timeout or checking network connection.";
+				}
 				try {
 					if (process.HasExited == false)
 						process.Kill();

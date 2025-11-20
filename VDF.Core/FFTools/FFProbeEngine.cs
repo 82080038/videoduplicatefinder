@@ -21,9 +21,20 @@ namespace VDF.Core.FFTools {
 	static class FFProbeEngine {
 		public static readonly string FFprobePath;
 		const int TimeoutDuration = 15_000; //15 seconds
+		const int NetworkTimeoutDuration = 60_000; //60 seconds for network drives
 		static FFProbeEngine() => FFprobePath = FFToolsUtils.GetPath(FFToolsUtils.FFTool.FFProbe) ?? string.Empty;
 
 		public static MediaInfo? GetMediaInfo(string file, bool extendedLogging) {
+			// Check if file is on network drive and adjust timeout accordingly
+			bool isNetworkPath = CoreUtils.IsNetworkPath(file);
+			int timeout = isNetworkPath ? NetworkTimeoutDuration : TimeoutDuration;
+			
+			// Pre-check network accessibility before attempting to process
+			if (isNetworkPath && !CoreUtils.IsNetworkPathAccessible(file, 10000)) {
+				Logger.Instance.Info($"Network path not accessible for FFprobe: {file}");
+				return null;
+			}
+
 			//https://docs.microsoft.com/en-us/dotnet/csharp/how-to/concatenate-multiple-strings#string-literals
 			string ffprobeArguments = $" -hide_banner -loglevel {(extendedLogging ? "error" : "quiet")}" +
 				$" -print_format json -sexagesimal -show_format -show_streams  \"{FFToolsUtils.LongPathFix(file)}\"";
@@ -54,8 +65,8 @@ namespace VDF.Core.FFTools {
 				}
 				using var ms = new MemoryStream();
 				process.StandardOutput.BaseStream.CopyTo(ms);
-				if (!process.WaitForExit(TimeoutDuration))
-					throw new TimeoutException($"FFprobe timed out on file: {file}");
+				if (!process.WaitForExit(timeout))
+					throw new TimeoutException($"FFprobe timed out on file: {file} (timeout: {timeout}ms, network: {isNetworkPath})");
 				else if (extendedLogging)
 					process.WaitForExit(); // Because of asynchronous event handlers, see: https://github.com/dotnet/runtime/issues/18789
 
@@ -66,6 +77,9 @@ namespace VDF.Core.FFTools {
 			}
 			catch (Exception e) {
 				errOut += $"{Environment.NewLine}{e.Message}";
+				if (isNetworkPath && e is TimeoutException) {
+					errOut += $"{Environment.NewLine}Network drive may be slow or disconnected. Consider increasing timeout or checking network connection.";
+				}
 				try {
 					if (process.HasExited == false)
 						process.Kill();

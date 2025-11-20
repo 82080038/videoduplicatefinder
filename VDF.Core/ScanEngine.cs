@@ -189,7 +189,7 @@ namespace VDF.Core {
 			int oldFileCount = DatabaseUtils.Database.Count;
 
 			foreach (string path in Settings.IncludeList) {
-				if (!Directory.Exists(path)) continue;
+				if (!CoreUtils.DirectoryExistsWithTimeout(path, 10000)) continue;
 
 				foreach (FileInfo file in FileUtils.GetFilesRecursive(path, Settings.IgnoreReadOnlyFolders, Settings.IgnoreReparsePoints,
 					Settings.IncludeSubDirectories, Settings.IncludeImages, Settings.BlackList.ToList())) {
@@ -262,7 +262,7 @@ namespace VDF.Core {
 
 			if (entry.Flags.Any(EntryFlags.ManuallyExcluded | EntryFlags.TooDark))
 				return true;
-			if (!Settings.IncludeNonExistingFiles && !File.Exists(entry.Path))
+			if (!Settings.IncludeNonExistingFiles && !CoreUtils.FileExistsWithTimeout(entry.Path, 10000))
 				return true;
 
 			if (Settings.FilterByFileSize && (entry.FileSize.BytesToMegaBytes() > Settings.MaximumFileSize ||
@@ -281,7 +281,7 @@ namespace VDF.Core {
 					return true;
 			}
 
-			if (Settings.IgnoreReparsePoints && File.Exists(entry.Path) && File.ResolveLinkTarget(entry.Path, returnFinalTarget: false) != null)
+			if (Settings.IgnoreReparsePoints && CoreUtils.FileExistsWithTimeout(entry.Path, 10000) && File.ResolveLinkTarget(entry.Path, returnFinalTarget: false) != null)
 				return true;
 			if (Settings.FilterByFilePathNotContains) {
 				bool contains = false;
@@ -306,7 +306,7 @@ namespace VDF.Core {
 		public static void UpdateFilePathInDatabase(string newPath, FileEntry dbEntry) => DatabaseUtils.UpdateFilePath(newPath, dbEntry);
 #pragma warning disable CS8601 // Possible null reference assignment
 		public static bool GetFromDatabase(string path, out FileEntry? dbEntry) {
-			if (!File.Exists(path)) {
+			if (!CoreUtils.FileExistsWithTimeout(path, 10000)) {
 				dbEntry = null;
 				return false;
 			}
@@ -429,18 +429,190 @@ namespace VDF.Core {
 
 			if (Settings.UsePHashing) {
 				float differenceLimitpHash = Settings.Percent / 100f;
+				
+				// Additional validation: Check resolution and aspect ratio similarity
+				// Videos with significantly different resolutions/aspect ratios are likely not duplicates
+				if (!entry.IsImage && !compItem.IsImage && entry.mediaInfo != null && compItem.mediaInfo != null) {
+					var entryVideoStream = entry.mediaInfo.Streams?.FirstOrDefault(s => s.CodecType == "video");
+					var compVideoStream = compItem.mediaInfo.Streams?.FirstOrDefault(s => s.CodecType == "video");
+					
+					if (entryVideoStream != null && compVideoStream != null) {
+						// Check aspect ratio similarity (within 5% tolerance)
+						float entryAspect = entryVideoStream.Width > 0 && entryVideoStream.Height > 0 
+							? (float)entryVideoStream.Width / entryVideoStream.Height 
+							: 0f;
+						float compAspect = compVideoStream.Width > 0 && compVideoStream.Height > 0 
+							? (float)compVideoStream.Width / compVideoStream.Height 
+							: 0f;
+						
+						if (entryAspect > 0 && compAspect > 0) {
+							float aspectDiff = Math.Abs(entryAspect - compAspect) / Math.Max(entryAspect, compAspect);
+							if (aspectDiff > 0.05f) { // More than 5% aspect ratio difference
+								difference = 1f;
+								return false;
+							}
+						}
+						
+						// Check resolution similarity (within 20% tolerance for same aspect ratio videos)
+						// This helps filter videos that are clearly different sizes
+						if (entryVideoStream.Width > 0 && entryVideoStream.Height > 0 && 
+							compVideoStream.Width > 0 && compVideoStream.Height > 0) {
+							float widthDiff = Math.Abs(entryVideoStream.Width - compVideoStream.Width) / (float)Math.Max(entryVideoStream.Width, compVideoStream.Width);
+							float heightDiff = Math.Abs(entryVideoStream.Height - compVideoStream.Height) / (float)Math.Max(entryVideoStream.Height, compVideoStream.Height);
+							
+							// If both width and height differ significantly, likely not a duplicate
+							if (widthDiff > 0.20f && heightDiff > 0.20f) {
+								difference = 1f;
+								return false;
+							}
+						}
+					}
+				}
+				
+				// Use much stricter per-frame threshold to reduce false positives
+				// Require each frame to be at least 99.5% of the overall threshold (increased from 98%)
+				// This ensures that individual frames are very similar, not just on average
+				float perFrameThreshold = differenceLimitpHash * 0.995f;
+				
+				List<float> frameSimilarities = new List<float>(positionList.Count);
+				int matchingFrames = 0;
+				int nonMatchingFrames = 0;
+				int validFrames = 0;
+				int highQualityMatches = 0; // Frames that exceed threshold significantly
+				int excellentMatches = 0; // Frames that significantly exceed threshold
 
-				if (!entry.PHashes.TryGetValue(entry.GetGrayBytesIndex(positionList[0]), out ulong? phash))
-					phash = pHash.PerceptualHash.ComputePHashFromGray32x32(grayBytes[positionList[0]]);
-				if (!compItem.PHashes.TryGetValue(compItem.GetGrayBytesIndex(positionList[0]), out ulong? phash_comp))
-					phash_comp = pHash.PerceptualHash.ComputePHashFromGray32x32(compItem.grayBytes[positionList[0]]);
-				if (phash == null || phash_comp == null) {
+				// Compare all frames with stricter individual frame validation
+				for (int j = 0; j < positionList.Count; j++) {
+					double idx = entry.GetGrayBytesIndex(positionList[j]);
+					double compIdx = compItem.GetGrayBytesIndex(positionList[j]);
+
+					if (!grayBytes.TryGetValue(idx, out byte[]? gray1) || gray1 == null)
+						continue;
+					if (!compItem.grayBytes.TryGetValue(compIdx, out byte[]? gray2) || gray2 == null)
+						continue;
+
+					ulong? phash = entry.PHashes.TryGetValue(idx, out ulong? ph) ? ph : pHash.PerceptualHash.ComputePHashFromGray32x32(gray1);
+					ulong? phash_comp = compItem.PHashes.TryGetValue(compIdx, out ulong? phc) ? phc : pHash.PerceptualHash.ComputePHashFromGray32x32(gray2);
+
+					if (phash == null || phash_comp == null)
+						continue;
+
+					validFrames++;
+					
+					// Check if frame meets the stricter per-frame threshold
+					bool meetsPerFrameThreshold = pHash.PHashCompare.IsDuplicateByPercent(phash.Value, phash_comp.Value, out float frameSimilarity, perFrameThreshold, strict: true);
+					
+					// Also check overall threshold for statistics
+					bool meetsOverallThreshold = pHash.PHashCompare.IsDuplicateByPercent(phash.Value, phash_comp.Value, out float _, differenceLimitpHash, strict: true);
+					
+					frameSimilarities.Add(frameSimilarity);
+					
+					// Count high-quality matches (frames that exceed threshold by 2%)
+					if (frameSimilarity >= differenceLimitpHash * 1.02f) {
+						highQualityMatches++;
+					}
+					
+					// Count excellent matches (frames that exceed threshold by 5% - very strong match)
+					if (frameSimilarity >= differenceLimitpHash * 1.05f) {
+						excellentMatches++;
+					}
+					
+					if (meetsPerFrameThreshold) {
+						matchingFrames++;
+					} else {
+						nonMatchingFrames++;
+						// Early exit: if too many frames don't meet strict threshold, it's not a duplicate
+						// Reduced from 10% to 5% to be much more strict
+						float maxNonMatchingFrames = positionList.Count * 0.05f;
+						if (nonMatchingFrames > maxNonMatchingFrames) {
+							difference = 1f;
+							return false;
+						}
+					}
+				}
+
+				if (validFrames == 0) {
 					Logger.Instance.Info($"Failed to compute pHash for {entry.Path} or {compItem.Path}");
 					difference = 1f;
 					return false;
 				}
-				bool isDup = pHash.PHashCompare.IsDuplicateByPercent(phash.Value, phash_comp.Value, out float similarity, differenceLimitpHash, strict: true);
-				difference = 1f - similarity;
+
+				// Require at least 95% of frames to meet the strict per-frame threshold (increased from 90%)
+				// This ensures almost all frames are very similar, not just most
+				float minRequiredMatchingFrames = positionList.Count * 0.95f;
+				bool hasEnoughMatchingFrames = matchingFrames >= minRequiredMatchingFrames;
+				
+				if (!hasEnoughMatchingFrames) {
+					difference = 1f;
+					return false;
+				}
+
+				// Require at least 60% of frames to be high-quality matches (increased from 50%)
+				// This helps filter out videos that just barely meet the threshold
+				float minHighQualityMatches = positionList.Count * 0.60f;
+				if (highQualityMatches < minHighQualityMatches) {
+					difference = 1f;
+					return false;
+				}
+				
+				// Require at least 30% of frames to be excellent matches (very strong similarity)
+				// This ensures a significant portion of frames are extremely similar
+				float minExcellentMatches = positionList.Count * 0.30f;
+				if (excellentMatches < minExcellentMatches) {
+					difference = 1f;
+					return false;
+				}
+
+				// Calculate median similarity (more robust than average, less affected by outliers)
+				frameSimilarities.Sort();
+				float medianSimilarity;
+				if (frameSimilarities.Count % 2 == 0) {
+					medianSimilarity = (frameSimilarities[frameSimilarities.Count / 2 - 1] + frameSimilarities[frameSimilarities.Count / 2]) / 2f;
+				} else {
+					medianSimilarity = frameSimilarities[frameSimilarities.Count / 2];
+				}
+				
+				// Also calculate average for comparison
+				float avgSimilarity = frameSimilarities.Sum() / frameSimilarities.Count;
+				
+				// Calculate standard deviation to check consistency
+				float variance = frameSimilarities.Sum(s => (s - avgSimilarity) * (s - avgSimilarity)) / frameSimilarities.Count;
+				float stdDev = (float)Math.Sqrt(variance);
+				
+				// Outlier detection: check for frames that are significantly different
+				// Remove outliers that are more than 2 standard deviations below average
+				float outlierThreshold = avgSimilarity - (2f * stdDev);
+				int outlierCount = frameSimilarities.Count(s => s < outlierThreshold);
+				float maxOutlierRatio = 0.03f; // Allow maximum 3% outliers (reduced from 5%)
+				bool hasTooManyOutliers = outlierCount > (frameSimilarities.Count * maxOutlierRatio);
+				
+				// Use median similarity (more robust) but require it to be close to average
+				// High standard deviation indicates inconsistent similarity (likely false positive)
+				// Reduced from 5% to 3% for much stricter consistency requirement
+				float maxStdDev = 0.03f; // Maximum allowed standard deviation (3%)
+				bool isConsistent = stdDev <= maxStdDev && !hasTooManyOutliers;
+				
+				// Final decision: multiple strict checks must all pass
+				// 1. Median similarity must meet threshold
+				// 2. Average similarity must be very close to threshold (99.5% or higher)
+				// 3. Similarity must be consistent (low std dev, no outliers)
+				// 4. Minimum similarity must be reasonable (no frame too different)
+				float minSimilarity = frameSimilarities.Min();
+				float minSimilarityThreshold = differenceLimitpHash * 0.95f; // Even worst frame must be at least 95% of threshold (increased from 90%)
+				bool minSimilarityOk = minSimilarity >= minSimilarityThreshold;
+				
+				// Additional check: 75th percentile must also meet threshold
+				int percentile75Index = (int)(frameSimilarities.Count * 0.75f);
+				float percentile75Similarity = frameSimilarities[percentile75Index];
+				bool percentile75Ok = percentile75Similarity >= differenceLimitpHash;
+				
+				bool isDup = medianSimilarity >= differenceLimitpHash 
+					&& isConsistent 
+					&& avgSimilarity >= differenceLimitpHash * 0.995f // Increased from 0.99f to 99.5%
+					&& minSimilarityOk
+					&& percentile75Ok; // Added 75th percentile check
+				
+				difference = 1f - medianSimilarity;
 				return isDup;
 
 			}
@@ -587,7 +759,7 @@ namespace VDF.Core {
 			try {
 				await Parallel.ForEachAsync(dupList, new ParallelOptions { CancellationToken = cancelationTokenSource.Token, MaxDegreeOfParallelism = Settings.MaxDegreeOfParallelism }, (entry, cancellationToken) => {
 					List<Image>? list = null;
-					bool needsThumbnails = !Settings.IncludeNonExistingFiles || File.Exists(entry.Path);
+					bool needsThumbnails = !Settings.IncludeNonExistingFiles || CoreUtils.FileExistsWithTimeout(entry.Path, 10000);
 					List<TimeSpan>? timeStamps = null;
 
 					int current = Interlocked.Increment(ref done);

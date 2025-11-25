@@ -9,7 +9,7 @@
     <!-- Disable automatic package restore to prevent connection errors -->
     <RestorePackages>true</RestorePackages>
     <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
-    <RestoreProjectStyle>None</RestoreProjectStyle>
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
     <!-- Prevent NuGet from trying to connect -->
     <SkipRestorePackages>false</SkipRestorePackages>
@@ -66,6 +66,12 @@
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Update="Styles\Styles.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </AvaloniaResource>
+    <AvaloniaResource Update="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </AvaloniaResource>
+    <AvaloniaResource Update="Views\**\*.xaml">
       <Generator>MSBuild:Compile</Generator>
     </AvaloniaResource>
   </ItemGroup>

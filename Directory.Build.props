@@ -8,7 +8,7 @@
     <!-- Disable automatic package restore to prevent connection errors -->
     <RestorePackages>true</RestorePackages>
     <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
-    <RestoreProjectStyle>None</RestoreProjectStyle>
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
     <SkipRestorePackages>false</SkipRestorePackages>
     

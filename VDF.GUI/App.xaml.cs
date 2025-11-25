@@ -17,13 +17,32 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using System.IO;
 using VDF.GUI.Data;
 using VDF.GUI.ViewModels;
 using VDF.GUI.Views;
 
 namespace VDF.GUI {
 	public class App : Application {
-		public override void Initialize() => AvaloniaXamlLoader.Load(this);
+		public override void Initialize() {
+			try {
+				AvaloniaXamlLoader.Load(this);
+			} catch {
+				// Fallback: Load XAML from file if precompiled not available
+				var currentDir = AppContext.BaseDirectory;
+				var xamlPath = Path.Combine(currentDir, "App.xaml");
+				if (!File.Exists(xamlPath)) {
+					// Try loading from source directory
+					xamlPath = Path.Combine(currentDir, "..", "..", "..", "..", "VDF.GUI", "App.xaml");
+				}
+				if (File.Exists(xamlPath)) {
+					var uri = new System.Uri($"file://{Path.GetFullPath(xamlPath)}");
+					AvaloniaXamlLoader.Load(uri);
+				} else {
+					throw new FileNotFoundException($"Cannot find App.xaml. Searched in: {currentDir} and {xamlPath}");
+				}
+			}
+		}
 
 		public override void OnFrameworkInitializationCompleted() {
 			if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) {

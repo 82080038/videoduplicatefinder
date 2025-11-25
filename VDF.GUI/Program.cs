@@ -27,8 +27,29 @@ namespace VDF.GUI {
 		// SynchronizationContext-reliant code before AppMain is called: things aren't initialized
 		// yet and stuff might break.
 		[STAThread]
-		public static void Main(string[] args) => BuildAvaloniaApp()
-			.StartWithClassicDesktopLifetime(args);
+		public static void Main(string[] args) {
+			// Disable .NET telemetry to prevent connection errors
+			Environment.SetEnvironmentVariable("DOTNET_CLI_TELEMETRY_OPTOUT", "1");
+			Environment.SetEnvironmentVariable("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1");
+			Environment.SetEnvironmentVariable("DOTNET_NOLOGO", "1");
+			Environment.SetEnvironmentVariable("DOTNET_CLI_UI_LANGUAGE", "en");
+			Environment.SetEnvironmentVariable("NUGET_XMLDOC_MODE", "skip");
+			Environment.SetEnvironmentVariable("DOTNET_CLI_TELEMETRY_SESSIONID", "");
+			Environment.SetEnvironmentVariable("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
+			Environment.SetEnvironmentVariable("DOTNET_MULTILEVEL_LOOKUP", "0");
+			
+			// Disable NuGet automatic restore to prevent connection attempts
+			Environment.SetEnvironmentVariable("NUGET_PACKAGES", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages"));
+			Environment.SetEnvironmentVariable("NUGET_PLUGIN_PATHS", "");
+			Environment.SetEnvironmentVariable("NUGET_CREDENTIALPROVIDER_SESSIONTOKENCACHE_ENABLED", "false");
+			
+			// Disable all network-related .NET features
+			Environment.SetEnvironmentVariable("DOTNET_SYSTEM_NET_HTTP_USESOCKETSHTTPHANDLER", "false");
+			Environment.SetEnvironmentVariable("DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2SUPPORT", "false");
+			
+			BuildAvaloniaApp()
+				.StartWithClassicDesktopLifetime(args);
+		}
 
 		// Avalonia configuration, don't remove; also used by visual designer.
 		public static AppBuilder BuildAvaloniaApp()

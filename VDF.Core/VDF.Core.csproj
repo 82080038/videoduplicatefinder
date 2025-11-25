@@ -4,6 +4,17 @@
     <TargetFramework>net7.0</TargetFramework>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Disable automatic package restore to prevent connection errors -->
+    <RestorePackages>false</RestorePackages>
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+    <RestoreProjectStyle>None</RestoreProjectStyle>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <!-- Prevent NuGet from trying to connect -->
+    <SkipRestorePackages>true</SkipRestorePackages>
+    <!-- Force disable automatic restore in Visual Studio -->
+    <RestoreOnBuild>false</RestoreOnBuild>
+    <RestoreOnOpen>false</RestoreOnOpen>
+    <RestoreOnSave>false</RestoreOnSave>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="VDF.GUI" />

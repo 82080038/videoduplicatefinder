@@ -1,0 +1,6 @@
+# EditorConfig untuk Video Duplicate Finder
+# File ini membantu mencegah masalah koneksi dengan menonaktifkan telemetry
+
+# Disable .NET telemetry
+dotnet_disable_telemetry = true
+

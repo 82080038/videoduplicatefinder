@@ -4,6 +4,28 @@
     <TargetFramework>net7.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <!-- Disable telemetry to prevent connection errors -->
+    <EnableDefaultItems>true</EnableDefaultItems>
+    <!-- Disable automatic package restore to prevent connection errors -->
+    <RestorePackages>false</RestorePackages>
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+    <RestoreProjectStyle>None</RestoreProjectStyle>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <!-- Prevent NuGet from trying to connect -->
+    <SkipRestorePackages>true</SkipRestorePackages>
+    <!-- Force disable automatic restore in Visual Studio -->
+    <RestoreOnBuild>false</RestoreOnBuild>
+    <RestoreOnOpen>false</RestoreOnOpen>
+    <RestoreOnSave>false</RestoreOnSave>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Disable .NET SDK telemetry -->
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <!-- Prevent NuGet from trying to connect to external feeds -->
+    <NuGetPackageRoot>$(UserProfile)\.nuget\packages</NuGetPackageRoot>
+    <!-- Disable all network-related build features -->
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <EnableDefaultEmbeddedResourceItems>true</EnableDefaultEmbeddedResourceItems>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <PlatformTargets>x64;arm64</PlatformTargets>

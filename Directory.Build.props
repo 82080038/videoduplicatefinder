@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 
+  Directory.Build.props - Global build properties to prevent connection errors
+  This file applies to all projects in the solution automatically
+-->
+<Project>
+  <PropertyGroup>
+    <!-- Disable automatic package restore to prevent connection errors -->
+    <RestorePackages>true</RestorePackages>
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <SkipRestorePackages>false</SkipRestorePackages>
+    
+    <!-- Force disable automatic restore in Visual Studio -->
+    <RestoreOnBuild>true</RestoreOnBuild>
+    <RestoreOnOpen>false</RestoreOnOpen>
+    <RestoreOnSave>false</RestoreOnSave>
+    
+    <!-- Disable .NET SDK telemetry -->
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    
+    <!-- Prevent NuGet from trying to connect to external feeds -->
+    <NuGetPackageRoot>$(UserProfile)\.nuget\packages</NuGetPackageRoot>
+    
+    <!-- Disable all network-related build features -->
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <EnableDefaultEmbeddedResourceItems>true</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+</Project>
+

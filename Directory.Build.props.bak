@@ -6,14 +6,14 @@
 <Project>
   <PropertyGroup>
     <!-- Disable automatic package restore to prevent connection errors -->
-    <RestorePackages>true</RestorePackages>
+    <RestorePackages>false</RestorePackages>
     <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
     <RestoreProjectStyle>None</RestoreProjectStyle>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
-    <SkipRestorePackages>false</SkipRestorePackages>
+    <SkipRestorePackages>true</SkipRestorePackages>
     
     <!-- Force disable automatic restore in Visual Studio -->
-    <RestoreOnBuild>true</RestoreOnBuild>
+    <RestoreOnBuild>false</RestoreOnBuild>
     <RestoreOnOpen>false</RestoreOnOpen>
     <RestoreOnSave>false</RestoreOnSave>
     
